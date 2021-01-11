@@ -1,7 +1,7 @@
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
 
-object HelloSpark extends App {
+object HelloSparkPlayground extends App {
 
   val spark = SparkSession.builder
     .appName("RecommendEngine")
@@ -57,31 +57,27 @@ object HelloSpark extends App {
   val data10 = data9.select("sku1", "sku2", "nrMatches", "attWeight")
   data10.show()
 
-  RecommendationProvider("hello").getRecommendations("sku-17374", data10).show()
+  //SparkRecommender(spark).getRecommendations("sku-17374").show()
   //getRecommendations("sku-654", data10).show()
   //getRecommendations("sku-8275", data10).show()
 
-//    println("start filtering out 0 matches")
-//    val data11 = data10.filter(col("nrMatches") =!= 0) // no need for these
-//    data11.count()
-//    println("end filtering out 0 matches")
+  //    println("start filtering out 0 matches")
+  //    val data11 = data10.filter(col("nrMatches") =!= 0) // no need for these
+  //    data11.count()
+  //    println("end filtering out 0 matches")
 
-//    println("started writing")
-//    data10.write
-//      .mode(SaveMode.Overwrite)
-//      .parquet("src/main/resources/all-pairs-sim.parquet")
+  //    println("started writing")
+  //    data10.write
+  //      .mode(SaveMode.Overwrite)
+  //      .parquet("src/main/resources/all-pairs-sim.parquet")
 
-//    data10.write
-//      .format("json")
-//      .mode(SaveMode.Overwrite)
-//      .save("src/main/resources/all-pairs-sim.json")
+  //    data10.write
+  //      .format("json")
+  //      .mode(SaveMode.Overwrite)
+  //      .save("src/main/resources/all-pairs-sim.json")
 
-//    val data9 = spark.read.load("src/main/resources/all-pairs-sim.parquet")
-//    println("sim scores read")
-
-  case class Attributes(`att-a`: String, `att-b`: String, `att-c`: String, `att-d`: String, `att-e`: String,
-                        `att-f`: String, `att-g`: String, `att-h`: String, `att-i`: String, `att-j`: String)
-  case class Article(sku: String, attributes: Attributes)
+  //    val data9 = spark.read.load("src/main/resources/all-pairs-sim.parquet")
+  //    println("sim scores read")
 
   def attribsToList(attributes: Attributes): List[String] = {
     List(attributes.`att-a`, attributes.`att-b`, attributes.`att-c`, attributes.`att-d`,
