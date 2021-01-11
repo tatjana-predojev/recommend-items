@@ -1,86 +1,83 @@
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
 
-object HelloSpark {
+object HelloSpark extends App {
 
-  def main(args: Array[String]): Unit = {
+  val spark = SparkSession.builder
+    .appName("RecommendEngine")
+    .config("spark.master", "local[*]")
+    .getOrCreate()
+  import spark.implicits._
 
-    val spark = SparkSession.builder
-      .appName("RecommendEngine")
-      .config("spark.master", "local[*]")
-      .getOrCreate()
-    import spark.implicits._
+  val data: Dataset[Article] = spark.read
+    .format("json")
+    .option("inferSchema", "true")
+    .load("src/main/resources/test-data-for-spark.json")
+    .as[Article]
 
-    val data: Dataset[Article] = spark.read
-      .format("json")
-      .option("inferSchema", "true")
-      .load("src/main/resources/test-data-for-spark.json")
-      .as[Article]
+  data.show(truncate=false)
+  data.printSchema()
 
-    data.show(truncate=false)
-    data.printSchema()
+  val attribsToListUdf = udf(attribsToList _)
+  val data2: DataFrame = data.withColumn("attributes", attribsToListUdf(col("attributes")))
+  data2.show(truncate=false)
+  data2.printSchema()
 
-    val attribsToListUdf = udf(attribsToList _)
-    val data2: DataFrame = data.withColumn("attributes", attribsToListUdf(col("attributes")))
-    data2.show(truncate=false)
-    data2.printSchema()
-    //    val noSku = data2.filter(col("sku").isNull).count()
-    //    val noAttribs = data2.filter(col("attributes").isNull).count()
-    //    println(noSku + " " + noAttribs)
+  // self join to get all pairs
+  val data3 = data2.as("sku1").join(data2.as("sku2"))
+  val data4 = data3.select(col("sku1.sku").as("sku1"),
+    col("sku2.sku").as("sku2"),
+    col("sku1.attributes").as("attributes1"),
+    col("sku2.attributes").as("attributes2"))
+  data4.show(truncate = false) // 400M
 
-    // self join to get all pairs
-    val data3 = data2.as("sku1").join(data2.as("sku2"))
-    val data4 = data3.select(col("sku1.sku").as("sku1"),
-      col("sku2.sku").as("sku2"),
-      col("sku1.attributes").as("attributes1"),
-      col("sku2.attributes").as("attributes2"))
-    data4.show(truncate = false) // 400M
+  // filter out duplicate pairs
+  val data5 = data4.filter(col("sku1") < col("sku2"))
+  data5.show(truncate = false) // 199.99M
 
-    // filter out duplicate pairs
-    val data5 = data4.filter(col("sku1") < col("sku2"))
-    data5.show(truncate = false) // 199.99M
+  // create boolean array of matches for each pair
+  val data6 = data5.withColumn("comparison",
+    zip_with(col("attributes1"), col("attributes2"), (x, y) => x === y))
+  data6.show(truncate = false)
 
-    //data5.orderBy(col("sku1").desc, col("sku2").desc).show()
-//    data5.select("*")
-//      .where(col("sku1") === "sku-20000")
-//      .orderBy(col("sku2").desc)
-//      .show()
-    //data5.orderBy(col("sku1"), col("sku2")).show()
+  // calculate number of matches
+  val data7 = data6.withColumn("nrMatches",
+    size(filter(col("comparison"), x => x)))
+  data7.show(truncate = false)
 
-    // create binary array of matches for each pair
-    val data6 = data5.withColumn("comparison",
-      zip_with(col("attributes1"), col("attributes2"), (x, y) => x === y))
-    data6.show(truncate = false)
+  // weigh attributes
+  val binToDecArrayUdf = udf(binToDecArray _)
+  val data8 = data7.withColumn("binToDecArray", binToDecArrayUdf(col("comparison")))
 
-    // calculate number of matches
-    val data7 = data6.withColumn("nrMatches",
-      size(filter(col("comparison"), x => x)))
-    data7.show(truncate = false)
+  // calculate total attribute weight
+  val data9 = data8.withColumn("attWeight",
+    aggregate(col("binToDecArray"), lit(0), (acc, x) => acc + x))
+  data9.show(truncate = false)
 
-//    data7.withColumn("binToDec",
-//      aggregate(col("comparison"), lit(0), (acc, x) => acc + x))
-    val binToDecArrayUdf = udf(binToDecArray _)
-    val data8 = data7.withColumn("binToDecArray", binToDecArrayUdf(col("comparison")))
+  val data10 = data9.select("sku1", "sku2", "nrMatches", "attWeight")
+  data10.show()
 
-    val data9 = data8.withColumn("binToDec",
-      aggregate(col("binToDecArray"), lit(0), (acc, x) => acc + x))
-    data9.show(truncate = false)
+  RecommendationProvider("hello").getRecommendations("sku-17374", data10).show()
+  //getRecommendations("sku-654", data10).show()
+  //getRecommendations("sku-8275", data10).show()
 
-    val testSku1 = "sku-17374"
-    val topN = data9.filter(col("sku1") === testSku1 or col("sku2") === testSku1)
-      .orderBy(col("nrMatches").desc, col("binToDec").desc)
-      .limit(20)
-      .select(col("sku1"), col("sku2"), col("binToDecArray"),
-        col("nrMatches"), col("binToDec"))
-      .show(truncate = false)
-//      .select(col("sku1"), col("sku2"), col("comparison"),
-//         col("nrMatches"))
-//      .take(20)
-//      topN.foreach(println)
+//    println("start filtering out 0 matches")
+//    val data11 = data10.filter(col("nrMatches") =!= 0) // no need for these
+//    data11.count()
+//    println("end filtering out 0 matches")
 
+//    println("started writing")
+//    data10.write
+//      .mode(SaveMode.Overwrite)
+//      .parquet("src/main/resources/all-pairs-sim.parquet")
 
+//    data10.write
+//      .format("json")
+//      .mode(SaveMode.Overwrite)
+//      .save("src/main/resources/all-pairs-sim.json")
 
-  }
+//    val data9 = spark.read.load("src/main/resources/all-pairs-sim.parquet")
+//    println("sim scores read")
 
   case class Attributes(`att-a`: String, `att-b`: String, `att-c`: String, `att-d`: String, `att-e`: String,
                         `att-f`: String, `att-g`: String, `att-h`: String, `att-i`: String, `att-j`: String)
