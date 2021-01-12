@@ -15,13 +15,13 @@ object HelloSparkPlayground extends App {
     .load("src/main/resources/test-data-for-spark.json")
     .as[Article]
 
-  data.show(truncate=false)
-  data.printSchema()
+  //data.show(truncate=false)
+  //data.printSchema()
 
   val attribsToListUdf = udf(attribsToList _)
   val data2: DataFrame = data.withColumn("attributes", attribsToListUdf(col("attributes")))
-  data2.show(truncate=false)
-  data2.printSchema()
+  //data2.show(truncate=false)
+  //data2.printSchema()
 
   // self join to get all pairs
   val data3 = data2.as("sku1").join(data2.as("sku2"))
@@ -29,37 +29,51 @@ object HelloSparkPlayground extends App {
     col("sku2.sku").as("sku2"),
     col("sku1.attributes").as("attributes1"),
     col("sku2.attributes").as("attributes2"))
-  data4.show(truncate = false) // 400M
+  //data4.show(truncate = false) // 400M
 
   // filter out duplicate pairs
   val data5 = data4.filter(col("sku1") < col("sku2"))
-  data5.show(truncate = false) // 199.99M
+  //data5.show(truncate = false) // 199.99M
 
   // create boolean array of matches for each pair
   val data6 = data5.withColumn("comparison",
     zip_with(col("attributes1"), col("attributes2"), (x, y) => x === y))
-  data6.show(truncate = false)
+  //data6.show(truncate = false)
 
   // calculate number of matches
   val data7 = data6.withColumn("nrMatches",
     size(filter(col("comparison"), x => x)))
-  data7.show(truncate = false)
+  //data7.show(truncate = false)
 
   // weigh attributes
   val binToDecArrayUdf = udf(binToDecArray _)
   val data8 = data7.withColumn("binToDecArray", binToDecArrayUdf(col("comparison")))
 
-  // calculate total attribute weight
-  val data9 = data8.withColumn("attWeight",
+  // calculate attribute precedence
+  val data9 = data8.withColumn("attPrecedence",
     aggregate(col("binToDecArray"), lit(0), (acc, x) => acc + x))
-  data9.show(truncate = false)
+  //data9.show(truncate = false)
 
-  val data10 = data9.select("sku1", "sku2", "nrMatches", "attWeight")
-  data10.show()
+  val data10 = data9.select("sku1", "sku2", "nrMatches", "attPrecedence")
+  //data10.show()
 
-  //SparkRecommender(spark).getRecommendations("sku-17374").show()
-  //getRecommendations("sku-654", data10).show()
-  //getRecommendations("sku-8275", data10).show()
+  val testSku = "sku-123"
+  val data11 = data10.filter(col("sku1") === testSku or col("sku2") === "sku-123")
+    .orderBy(col("nrMatches").desc, col("attPrecedence").desc)
+    .limit(10)
+
+  val getPairSkuUdf = udf(getPairSku _)
+  val data12 = data11.withColumn("sku",
+    getPairSkuUdf(col("sku1"), col("sku2"), lit(testSku)))
+    .drop("sku1", "sku2")
+    .withColumn("weight", struct(col("nrMatches"), col("attPrecedence")))
+    .drop("nrMatches", "attPrecedence")
+    .as[Recommendation]
+    .collectAsList()
+  data12.forEach(println)
+
+  def getPairSku(sku1: String, sku2: String, skuToRemove: String): String =
+    if (sku1 == skuToRemove) sku2 else sku1
 
   //    println("start filtering out 0 matches")
   //    val data11 = data10.filter(col("nrMatches") =!= 0) // no need for these

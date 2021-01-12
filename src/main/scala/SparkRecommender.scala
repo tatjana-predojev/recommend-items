@@ -1,21 +1,33 @@
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions._
-
 import scala.concurrent.{ExecutionContext, Future}
 
-case class SparkRecommender(spark: SparkSession) extends SparkRoute {
+case class SparkRecommender(pathToInputData: String) extends SparkRoute {
 
+  val spark = SparkSession.builder
+    .appName("RecommendEngine")
+    .config("spark.master", "local[*]")
+    .getOrCreate()
   import spark.implicits._
 
-  //val data: Dataset[Article] = readInputData("src/main/resources/test-data-for-spark.json")
-  //val similarityScore = calculateSimilarityScore(data)
+  val data: Dataset[Article] = readInputData(pathToInputData)
+  lazy val similarityScore: DataFrame = calculateSimilarityScore()
 
-  override def recommend(sku: String)(implicit ec: ExecutionContext): Future[Int] = {
-    Future.successful(5)
+//  val similarityScore = spark.read.load("src/main/resources/all-pairs-sim.parquet")
+//    .withColumnRenamed("attWeight", "attPrecedence")
+  //similarityScore.show(truncate = false)
+
+  override def recommend(sku: String)(implicit ec: ExecutionContext): Future[List[Recommendation]] = {
+    val recs = getRecommendations(sku, 10)
+      .collect().toList
+    //TODO: add error handling
+    Future.successful(recs)
+    //Future.successful(List(Recommendation("sku", (4,5))))
   }
 
   val attribsToListUdf = udf(attribsToList _)
   val binToDecArrayUdf = udf(binToDecArray _)
+  val getPairSkuUdf = udf(getPairSku _)
 
   def readInputData(path: String): Dataset[Article] = {
     spark.read
@@ -25,7 +37,7 @@ case class SparkRecommender(spark: SparkSession) extends SparkRoute {
       .as[Article]
   }
 
-  def calculateSimilarityScore(data: Dataset[Article]): DataFrame = {
+  def calculateSimilarityScore(): DataFrame = {
     // Article is an array of attributes, switch to DataFrame interface
     val data1 = data.withColumn("attributes", attribsToListUdf(col("attributes")))
 
@@ -46,17 +58,26 @@ case class SparkRecommender(spark: SparkSession) extends SparkRoute {
       // weigh attributes
       .withColumn("binToDecArray", binToDecArrayUdf(col("comparison")))
       // calculate total attribute weight
-      .withColumn("attWeight",
+      .withColumn("attPrecedence",
         aggregate(col("binToDecArray"), lit(0), (acc, x) => acc + x))
-      .select("sku1", "sku2", "nrMatches", "attWeight")
+      .select("sku1", "sku2", "nrMatches", "attPrecedence")
   }
 
-  def getRecommendations(sku: String, similarityScore: DataFrame): DataFrame = {
+  def getRecommendations(sku: String, howMany: Int): Dataset[Recommendation] = {
     similarityScore
       .filter(col("sku1") === sku or col("sku2") === sku)
-      .orderBy(col("nrMatches").desc, col("attWeight").desc)
-      .limit(11)
+      .orderBy(col("nrMatches").desc, col("attPrecedence").desc)
+      .limit(howMany)
+      .withColumn("sku",
+        getPairSkuUdf(col("sku1"), col("sku2"), lit(sku)))
+      .drop("sku1", "sku2")
+      .withColumn("weight", struct(col("nrMatches"), col("attPrecedence")))
+      .drop("nrMatches", "attPrecedence")
+      .as[Recommendation]
   }
+
+  def getPairSku(sku1: String, sku2: String, skuToRemove: String): String =
+    if (sku1 == skuToRemove) sku2 else sku1
 
   def attribsToList(attributes: Attributes): List[String] = {
     List(attributes.`att-a`, attributes.`att-b`, attributes.`att-c`, attributes.`att-d`,
