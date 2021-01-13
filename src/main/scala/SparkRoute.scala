@@ -15,6 +15,9 @@ trait SparkRoute extends Directives {
       (pathEndOrSingleSlash & get) {
         withRequestTimeout(60.seconds) {
           parameter("sku") { sku =>
+            // TODO: add blocking dispatcher
+            //extractActorSystem { sys =>
+            //withExecutionContext(sys.dispatchers.lookup("blocking-dispatcher")) {
             extractExecutionContext { implicit ec =>
               onComplete(recommend(sku)) {
                 case Success(recommendations) => complete(recommendations)
