@@ -1,5 +1,6 @@
-import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
+
 import scala.concurrent.{ExecutionContext, Future}
 
 case class SparkRecommender(pathToInputData: String) extends SparkRoute {
@@ -15,7 +16,7 @@ case class SparkRecommender(pathToInputData: String) extends SparkRoute {
 
   override def recommend(sku: String)(implicit ec: ExecutionContext): Future[List[Recommendation]] = {
     val recs = getRecommendations(sku, 10)
-      .collect().toList // TODO: spark runtime exception: Task could not be serialized
+      .collect().toList // TODO: spark runtime exception: Task not serializable
     //TODO: add error handling
     Future.successful(recs)
   }
@@ -89,5 +90,7 @@ case class SparkRecommender(pathToInputData: String) extends SparkRoute {
       }
     go(bin, bin.length-1, Nil).reverse
   }
+
+  def stopSparkSession() = spark.stop()
 
 }

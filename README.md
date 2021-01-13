@@ -6,7 +6,8 @@ Requirements and the custom similarity metrics are described in [instructions](.
 The calculated similarity metric between two items is a tuple where the first element is the number of
 matching attributes (integer from 0 to 10) and the second element is calculated as follows. We take the binary
 array of matches and give weights to each attribute match by converting the array to the decimal number
-(the least important attribute `j` has the weight `2^0`, attribute `i` is weighted `2^1` etc. until `a` that weights `2^9`).
+(the least important attribute `att-j` has the weight `2^0`, attribute `att-i` is weighted `2^1` etc.
+until `att-a` that weights `2^9`).
 Attribute precedence is then calculated by summing the weights for each attribute match.
 Final ordering sorts by the number of matches first and by attribute precedence next
 (e.g. (5, 710) is greater than (4, 912), (5, 653) is greater than (5, 611)).
@@ -27,6 +28,9 @@ The results are returned as a list of 10 sku ids with the corresponding weights.
 
 **WIP**: Currently there is a spark runtime exception when this is executed.
 
+### How to execute recommendation request
+`sbt "run sku-123"` and choose `HelloSparkPlayground` main class. The computation takes a few seconds depending on your machine. 
+
 ### Improvements and future work
 Given that input data is static (assuming item attributes are updated or new items added daily in best case),
 the efficient solution would pre-calculate the recommendations for all items and store them to the external datastore.
@@ -34,10 +38,10 @@ On recommendation request the result then just needs to be read and returned (no
 no computations happening for each request). The (nightly) batch job could be set up to update recommendations. Frequency of
 recomputations depends on the dynamic of the data set.
 
-Another alternative route to explore is to possibly use [mleap](https://github.com/combust/mleap)
-  to remove the dependency from the spark session and load the pre-computed model.
+In addition, the spark query that takes the sku id and similarity matrix in order to filter, sort and take top n recommendations
+could possibly be optimized (function `getRecommendations` in `SparkRecommender`). Currently it is slow.
 
-There is a number of minor improvements to be explored.
+There is a number of other (minor) improvements to be explored.
 
 Currently the all-pairs similarity matrix contains pairs with the similarity score (0, 0), i.e. zero matches.
 With the given data set the number of these pairs is approx. 100M which is half the size of the similarity matrix.
@@ -45,8 +49,8 @@ Perhaps reducing the size of the similarity matrix by filtering out zero-matches
 computation. Naturally, filtering is done just once and the resulting similarity matrix memoized so that it can be used
 for the subsequent recommendations.
 
-Next, the spark query that takes the sku id and similarity matrix in order to filter, sort and take top n recommendations
-could possibly be optimized (function `getRecommendations` in `SparkRecommender`). Currently it is slow.
+Another alternative route to explore is to possibly use [mleap](https://github.com/combust/mleap)
+to remove the dependency from the spark session and load the pre-computed model.
 
 Of course, many code improvements are due. The most important one is to add tests that are currently missing (sorry!).
 In addition, error handling has to be improved significantly (at least the input parameter checks and the more

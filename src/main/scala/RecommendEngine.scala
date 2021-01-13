@@ -22,6 +22,7 @@ class RecommendEngine extends HttpApp {
   }
 
   override protected def postServerShutdown(attempt: Try[Done], system: ActorSystem): Unit = {
+    sparkRecommender.stopSparkSession()
     Http().shutdownAllConnectionPools()
     super.postServerShutdown(attempt, system)
   }

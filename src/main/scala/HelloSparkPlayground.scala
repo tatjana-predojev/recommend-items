@@ -3,6 +3,10 @@ import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
 
 object HelloSparkPlayground extends App {
 
+  if (args.length == 0) {
+    println("please try again and provide valid input sku id")
+    sys.exit(1)
+  }
   val sku: String = args(0)
   val pathToInputData = if (args.length == 2) args(1) else "src/main/resources/test-data-for-spark.json"
 
@@ -58,9 +62,7 @@ object HelloSparkPlayground extends App {
   //data9.show(truncate = false)
 
   val data10 = data9.select("sku1", "sku2", "nrMatches", "attPrecedence")
-  //data10.show()
 
-  //val testSku = "sku-123"
   val data11 = data10.filter(col("sku1") === sku or col("sku2") === sku)
     .orderBy(col("nrMatches").desc, col("attPrecedence").desc)
     .limit(10)
@@ -75,6 +77,8 @@ object HelloSparkPlayground extends App {
     .collectAsList()
 
   data12.forEach(println)
+
+  spark.stop()
 
   def getPairSku(sku1: String, sku2: String, skuToRemove: String): String =
     if (sku1 == skuToRemove) sku2 else sku1
