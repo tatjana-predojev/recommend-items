@@ -13,16 +13,11 @@ case class SparkRecommender(pathToInputData: String) extends SparkRoute {
   val data: Dataset[Article] = readInputData(pathToInputData)
   lazy val similarityScore: DataFrame = calculateSimilarityScore()
 
-//  val similarityScore = spark.read.load("src/main/resources/all-pairs-sim.parquet")
-//    .withColumnRenamed("attWeight", "attPrecedence")
-  //similarityScore.show(truncate = false)
-
   override def recommend(sku: String)(implicit ec: ExecutionContext): Future[List[Recommendation]] = {
     val recs = getRecommendations(sku, 10)
-      .collect().toList
+      .collect().toList // TODO: spark runtime exception: Task could not be serialized
     //TODO: add error handling
     Future.successful(recs)
-    //Future.successful(List(Recommendation("sku", (4,5))))
   }
 
   val attribsToListUdf = udf(attribsToList _)

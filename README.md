@@ -17,7 +17,15 @@ and prints them to the console. This script was used during the development of t
 It is far from being production ready.
 
 ### Extended solution with web service
+More useful recommender engine would expose results as a web service. For this functionality `akka-http` was used.
+The server is started in `RecommendEngine` and it accepts `GET` requests on `http://localhost:8080/recommend` endpoint.
+The input `sku` parameter should also be included in the request. Example request:
 
+`curl http://localhost:8080/recommend/?sku=sku-1295`
+
+The results are returned as a list of 10 sku ids with the corresponding weights.
+
+**WIP**: Currently there is a spark runtime exception when this is executed.
 
 ### Improvements and future work
 Given that input data is static (assuming item attributes are updated or new items added daily in best case),
@@ -38,7 +46,7 @@ computation. Naturally, filtering is done just once and the resulting similarity
 for the subsequent recommendations.
 
 Next, the spark query that takes the sku id and similarity matrix in order to filter, sort and take top n recommendations
-could possibly be optimized (function `getRecommendations` in `SparkRecommender`). Currently it is slow. 
+could possibly be optimized (function `getRecommendations` in `SparkRecommender`). Currently it is slow.
 
 Of course, many code improvements are due. The most important one is to add tests that are currently missing (sorry!).
 In addition, error handling has to be improved significantly (at least the input parameter checks and the more
