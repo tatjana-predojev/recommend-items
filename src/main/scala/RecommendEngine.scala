@@ -12,9 +12,7 @@ class RecommendEngine extends HttpApp {
   implicit lazy val actorSystem: ActorSystem = systemReference.get()
   implicit lazy val materializer: ActorMaterializer = ActorMaterializer()
 
-  val sparkRecommender = SparkRecommender("src/main/resources/test-data-for-spark.json")
-
-  override def routes: Route = sparkRecommender.sparkRoute
+  override def routes: Route = new SparkRecommender().sparkRoute
 
   override protected def postHttpBinding(binding: Http.ServerBinding): Unit = {
     super.postHttpBinding(binding)
@@ -22,7 +20,7 @@ class RecommendEngine extends HttpApp {
   }
 
   override protected def postServerShutdown(attempt: Try[Done], system: ActorSystem): Unit = {
-    sparkRecommender.stopSparkSession()
+    SparkRecommender.spark.stop()
     Http().shutdownAllConnectionPools()
     super.postServerShutdown(attempt, system)
   }

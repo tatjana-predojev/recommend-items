@@ -22,13 +22,8 @@ object HelloSparkPlayground extends App {
     .load(pathToInputData)
     .as[Article]
 
-  //data.show(truncate=false)
-  //data.printSchema()
-
   val attribsToListUdf = udf(attribsToList _)
   val data2: DataFrame = data.withColumn("attributes", attribsToListUdf(col("attributes")))
-  //data2.show(truncate=false)
-  //data2.printSchema()
 
   // self join to get all pairs
   val data3 = data2.as("sku1").join(data2.as("sku2"))
@@ -45,12 +40,10 @@ object HelloSparkPlayground extends App {
   // create boolean array of matches for each pair
   val data6 = data5.withColumn("comparison",
     zip_with(col("attributes1"), col("attributes2"), (x, y) => x === y))
-  //data6.show(truncate = false)
 
   // calculate number of matches
   val data7 = data6.withColumn("nrMatches",
     size(filter(col("comparison"), x => x)))
-  //data7.show(truncate = false)
 
   // weigh attributes
   val binToDecArrayUdf = udf(binToDecArray _)
@@ -59,24 +52,37 @@ object HelloSparkPlayground extends App {
   // calculate attribute precedence
   val data9 = data8.withColumn("attPrecedence",
     aggregate(col("binToDecArray"), lit(0), (acc, x) => acc + x))
-  //data9.show(truncate = false)
 
   val data10 = data9.select("sku1", "sku2", "nrMatches", "attPrecedence")
+  data10.show(truncate = false)
+  //data10.cache()
 
-  val data11 = data10.filter(col("sku1") === sku or col("sku2") === sku)
-    .orderBy(col("nrMatches").desc, col("attPrecedence").desc)
-    .limit(10)
+  def getRecommendations(sku: String): Dataset[Recommendation] = {
+    val data11 = data10.filter(col("sku1") === sku or col("sku2") === sku)
+      .orderBy(col("nrMatches").desc, col("attPrecedence").desc)
+      .limit(10)
 
-  val getPairSkuUdf = udf(getPairSku _)
-  val data12 = data11.withColumn("sku",
-    getPairSkuUdf(col("sku1"), col("sku2"), lit(sku)))
-    .drop("sku1", "sku2")
-    .withColumn("weight", struct(col("nrMatches"), col("attPrecedence")))
-    .drop("nrMatches", "attPrecedence")
-    .as[Recommendation]
-    .collectAsList()
+    val getPairSkuUdf = udf(getPairSku _)
+    data11.withColumn("sku",
+      getPairSkuUdf(col("sku1"), col("sku2"), lit(sku)))
+      .drop("sku1", "sku2")
+      .withColumn("weight", struct(col("nrMatches"), col("attPrecedence")))
+      .drop("nrMatches", "attPrecedence")
+      .as[Recommendation]
+  }
 
-  data12.forEach(println)
+  val start = System.currentTimeMillis()
+  val data12 = getRecommendations(sku)
+  println("starting recommendation computation for " + sku)
+  data12.collectAsList().forEach(println)
+  println("done! duration " + (System.currentTimeMillis() - start) + " ms")
+
+//  val start1 = System.currentTimeMillis()
+//  val sku1 = "sku-1936"
+//  val data13 = getRecommendations(sku1)
+//  println("starting recommendation computation for " + sku1)
+//  data13.collectAsList().forEach(println)
+//  println("done! duration " + (System.currentTimeMillis() - start1) + " ms")
 
   spark.stop()
 

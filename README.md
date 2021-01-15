@@ -12,7 +12,7 @@ Attribute precedence is then calculated by summing the weights for each attribut
 Final ordering sorts by the number of matches first and by attribute precedence next
 (e.g. (5, 710) is greater than (4, 912), (5, 653) is greater than (5, 611)).
 
-### Current prototype solution
+### First prototype solution
 Prototype solution is given in `HelloSparkPlayground`. It takes a sku id, calculates recommendations
 and prints them to the console. This script was used during the development of the recommendation algorithm.
 It is far from being production ready.
@@ -26,10 +26,9 @@ The input `sku` parameter should also be included in the request. Example reques
 
 The results are returned as a list of 10 sku ids with the corresponding weights.
 
-**WIP**: Currently there is a spark runtime exception when this is executed.
-
 ### How to execute recommendation request
-`sbt "run sku-123"` and choose `HelloSparkPlayground` main class. The computation takes a few seconds depending on your machine. 
+To start the server `sbt run` and choose `RecommendEngine`. After the server starts, send requests as described above.
+Alternatively, `sbt "run sku-123"` and choose `HelloSparkPlayground` to see recommendations printed on the console. 
 
 ### Improvements and future work
 Given that input data is static (assuming item attributes are updated or new items added daily in best case),

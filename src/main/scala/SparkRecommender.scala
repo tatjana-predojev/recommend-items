@@ -1,9 +1,10 @@
+import SparkRecommender.getRecommendations
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
 
 import scala.concurrent.{ExecutionContext, Future}
 
-case class SparkRecommender(pathToInputData: String) extends SparkRoute {
+object SparkRecommender {
 
   val spark = SparkSession.builder
     .appName("RecommendEngine")
@@ -11,14 +12,16 @@ case class SparkRecommender(pathToInputData: String) extends SparkRoute {
     .getOrCreate()
   import spark.implicits._
 
-  val data: Dataset[Article] = readInputData(pathToInputData)
+  val data: Dataset[Article] = readInputData("src/main/resources/test-data-for-spark.json")
   lazy val similarityScore: DataFrame = calculateSimilarityScore()
 
-  override def recommend(sku: String)(implicit ec: ExecutionContext): Future[List[Recommendation]] = {
-    val recs = getRecommendations(sku, 10)
-      .collect().toList // TODO: spark runtime exception: Task not serializable
-    //TODO: add error handling
-    Future.successful(recs)
+  def readSimilarityScore(): DataFrame = {
+    SparkRecommender.spark.read.load("src/main/resources/all-pairs-sim.parquet")
+  }
+  def writeSimilarityScore(path: String = "src/main/resources/all-pairs-sim.parquet") = {
+    similarityScore.write
+      .mode(SaveMode.Overwrite)
+      .parquet(path)
   }
 
   val attribsToListUdf = udf(attribsToList _)
@@ -26,7 +29,7 @@ case class SparkRecommender(pathToInputData: String) extends SparkRoute {
   val getPairSkuUdf = udf(getPairSku _)
 
   def readInputData(path: String): Dataset[Article] = {
-    spark.read
+    SparkRecommender.spark.read
       .format("json")
       .option("inferSchema", "true")
       .load(path)
@@ -91,6 +94,15 @@ case class SparkRecommender(pathToInputData: String) extends SparkRoute {
     go(bin, bin.length-1, Nil).reverse
   }
 
-  def stopSparkSession() = spark.stop()
+}
+
+class SparkRecommender extends SparkRoute {
+
+  override def recommend(sku: String)(implicit ec: ExecutionContext): Future[List[Recommendation]] = {
+    val recs = getRecommendations(sku, 10)
+      .collect().toList
+    //TODO: add error handling
+    Future.successful(recs)
+  }
 
 }
